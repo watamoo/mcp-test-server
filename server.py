@@ -65,10 +65,11 @@ def create_vector_db_from_directory(
 ) -> Dict[str, Any]:
     """
     指定したディレクトリ内のファイルからベクトルDBを作成する。
+    すでに同じファイルセットを持つベクトルストアが存在すれば、それを再利用する。
 
     Args:
         directory_path (str): ファイルを検索するディレクトリのパス
-        vector_store_name (str, optional): 作成するベクトルストアの名前。デフォルトは "local_knowledge"
+        vector_store_name (str, optional): ベクトルストアの名前。デフォルトは "local_knowledge"
         file_patterns (List[str], optional): 処理するファイルのパターン。デフォルトは ["*.txt", "*.pdf", "*.docx", "*.md"]
 
     Returns:
@@ -76,7 +77,6 @@ def create_vector_db_from_directory(
     """
     # ファイルの取得
     files = get_files_from_directory(directory_path, file_patterns)
-    print(files)
 
     if not files:
         return {
@@ -84,7 +84,40 @@ def create_vector_db_from_directory(
             "message": f"指定したディレクトリ '{directory_path}' にパターン {file_patterns} に一致するファイルが見つかりませんでした。",
         }
 
-    # ベクトルストアの作成
+    # ファイル名のリストを取得
+    file_names = set(os.path.basename(file) for file in files)
+    print(f"file_names:{file_names}")
+
+    # 既存のベクトルストア一覧を取得
+    try:
+        vector_stores = client.vector_stores.list()
+
+        # OpenAIのファイル一覧を取得し、file_id → filename のマッピングを作成
+        all_files = client.files.list()
+        file_id_to_name = {f.id: f.filename for f in all_files.data}
+
+        for vs in vector_stores.data:
+            vector_store_id = vs.id
+
+            # そのベクトルストアに含まれるファイルID一覧を取得
+            vector_store_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
+            existing_files = {file_id_to_name[f.id] for f in vector_store_files.data if f.id in file_id_to_name}
+
+            print(f"ベクトルストア内のファイル名: {existing_files}")
+
+            # 現在のファイルセットと比較（完全一致するか）
+            if file_names == existing_files:
+                print(f"既存のベクトルストアを再利用: {vector_store_id}")
+                return {
+                    "status": "success",
+                    "message": f"既存のベクトルストア '{vector_store_id}' を使用しました。",
+                    "vector_store_id": vector_store_id,
+                }
+
+    except Exception as e:
+        print(f"ベクトルストアの取得中にエラーが発生しました: {e}")
+
+    # 一致するベクトルストアがない場合、新規作成
     vector_store_id = create_vector_store(vector_store_name)
 
     # 処理結果の統計情報
@@ -121,14 +154,14 @@ def create_vector_db_from_directory(
 
 
 @mcp.tool()
-def query_vector_db(query: str, vector_store_id: str, n_results: int = 5) -> Dict[str, Any]:
+def query_vector_db(query: str, vector_store_id: str, n_results: int = 10) -> Dict[str, Any]:
     """
-    ベクトルDBに対してクエリを実行する。
+    構築した内部知識DBを検索することで、情報を抽出する。
 
     Args:
         query (str): 検索クエリ
         vector_store_id (str): ベクトルストアのID
-        n_results (int, optional): 返す結果の数。デフォルトは 5
+        n_results (int, optional): 返す結果の数。デフォルトは 10
 
     Returns:
         Dict[str, Any]: 検索結果
@@ -156,27 +189,10 @@ def query_vector_db(query: str, vector_store_id: str, n_results: int = 5) -> Dic
         return {"status": "error", "message": f"クエリの実行中にエラーが発生しました: {e}"}
 
 
-@mcp.tool()
-def list_vector_stores() -> Dict[str, Any]:
-    """
-    利用可能なベクトルストアの一覧を取得する。
-
-    Returns:
-        Dict[str, Any]: ベクトルストアの一覧
-    """
-    try:
-        # ベクトルストアの一覧を取得
-        vector_stores = client.vector_stores.list()
-
-        return {"status": "success", "vector_stores": [{"id": vs.id, "name": vs.name} for vs in vector_stores.data]}
-
-    except Exception as e:
-        return {"status": "error", "message": f"ベクトルストアの一覧取得中にエラーが発生しました: {e}"}
-
-
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-    print("hello")
+    # print("hello")
     # ret = create_vector_db_from_directory("/Users/watamoo/dev/sample-data")
-    # ret = query_vector_db("Scaling則（Scaling Law）とはなんですか", "vs_67d93396f0748191a5904c88b58bacb2")
     # print(ret)
+    # # ret = query_vector_db("Scaling則（Scaling Law）とはなんですか", "vs_67d93396f0748191a5904c88b58bacb2")
+    # # print(ret)
