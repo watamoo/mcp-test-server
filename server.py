@@ -92,14 +92,14 @@ def create_vector_db_from_directory(
     try:
         vector_stores = client.vector_stores.list()
 
-        # OpenAIのファイル一覧を取得し、file_id → filename のマッピングを作成
+        # OpenAIにアップされているファイル一覧を取得し、file_id → filename のマッピングを作成
         all_files = client.files.list()
         file_id_to_name = {f.id: f.filename for f in all_files.data}
 
         for vs in vector_stores.data:
             vector_store_id = vs.id
 
-            # そのベクトルストアに含まれるファイルID一覧を取得
+            # それぞれのベクトルストアに含まれるファイルID一覧を取得して、ファイル名に変換
             vector_store_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
             existing_files = {file_id_to_name[f.id] for f in vector_store_files.data if f.id in file_id_to_name}
 
@@ -161,13 +161,13 @@ def query_vector_db(query: str, vector_store_id: str, n_results: int = 10) -> Di
     Args:
         query (str): 検索クエリ
         vector_store_id (str): ベクトルストアのID
-        n_results (int, optional): 返す結果の数。デフォルトは 10
+        n_results (int, optional): 返す結果の数。デフォルトは10
 
     Returns:
         Dict[str, Any]: 検索結果
     """
     try:
-        # OpenAIのドキュメントに基づいてsearchメソッドを使用
+        # ベクトルストアを検索して、類似度の高いテキストを抽出
         results = client.vector_stores.search(vector_store_id=vector_store_id, query=query, max_num_results=n_results)
 
         # 結果を整形
@@ -191,8 +191,3 @@ def query_vector_db(query: str, vector_store_id: str, n_results: int = 10) -> Di
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-    # print("hello")
-    # ret = create_vector_db_from_directory("/Users/watamoo/dev/sample-data")
-    # print(ret)
-    # # ret = query_vector_db("Scaling則（Scaling Law）とはなんですか", "vs_67d93396f0748191a5904c88b58bacb2")
-    # # print(ret)
